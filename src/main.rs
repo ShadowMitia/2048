@@ -28,7 +28,7 @@ impl States for AppState {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Event)]
 struct ScoreEvent(u32);
 
 #[derive(Resource, Default)]
@@ -146,10 +146,8 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>, mut grid: ResMu
         .spawn((
             NodeBundle {
                 style: Style {
-                    size: Size::new(
-                        bevy::prelude::Val::Percent(100.0),
-                        bevy::prelude::Val::Percent(10.0),
-                    ),
+                    width: bevy::prelude::Val::Percent(100.0),
+                    height: bevy::prelude::Val::Percent(10.0),
                     flex_direction: FlexDirection::Row,
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::SpaceEvenly,
@@ -322,7 +320,7 @@ fn button_system(
 ) {
     for (interaction, mut color) in &mut interaction_query {
         match *interaction {
-            Interaction::Clicked => {
+            Interaction::Pressed => {
                 *color = PRESSED_BUTTON.into();
                 next_state.set(AppState::InGame)
             }
@@ -349,7 +347,8 @@ fn game_over(mut commands: Commands, font: Res<GameFont>) {
                 style: Style {
                     position_type: PositionType::Absolute,
                     // fill the entire window
-                    size: Size::all(Val::Percent(100.)),
+                  width: Val::Percent(100.),
+                  height: Val::Percent(100.),
                     flex_direction: FlexDirection::Column,
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::SpaceEvenly,
@@ -412,7 +411,8 @@ fn win_screen(mut commands: Commands, font: Res<GameFont>) {
                 z_index: ZIndex::Global(2),
                 style: Style {
                     // fill the entire window
-                    size: Size::all(Val::Percent(100.)),
+                    width: Val::Percent(100.),
+                    height: Val::Percent(100.),
                     flex_direction: FlexDirection::Column,
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::SpaceEvenly,
@@ -515,23 +515,25 @@ fn main() {
             }),
             ..default()
         }))
-        .add_system(bevy::window::close_on_esc)
-        .add_startup_system(setup)
-        .add_system(add_score)
-        .add_systems((tween_scale_system, tween_translation_system))
-        .add_systems((update_tile_graphics, input).in_set(OnUpdate(AppState::InGame)))
-        .add_systems((
-            game_over.in_schedule(OnEnter(AppState::GameOver)),
-            cleanup_system::<GameOverUI>.in_schedule(OnExit(AppState::GameOver)),
-            cleanup_system::<Cell>.in_schedule(OnExit(AppState::GameOver)),
-            reset_game.in_schedule(OnExit(AppState::GameOver)),
-            button_system.in_set(OnUpdate(AppState::GameOver)),
-        ))
-        .add_systems((
-            win_screen.in_schedule(OnEnter(AppState::Win)),
-            cleanup_system::<WinUI>.in_schedule(OnExit(AppState::Win)),
-            button_system.in_set(OnUpdate(AppState::Win)),
-        ))
+        .add_systems(Update, bevy::window::close_on_esc)
+        .add_systems(Startup, setup)
+        .add_systems(Update, add_score)
+        .add_systems(Update, (tween_scale_system, tween_translation_system))
+        .add_systems(Update, (update_tile_graphics, input).run_if(in_state(AppState::InGame)))
+        .add_systems(OnEnter(AppState::GameOver), game_over)
+        .add_systems(
+            OnExit(AppState::GameOver),
+            (
+                cleanup_system::<GameOverUI>,
+                cleanup_system::<Cell>,
+                reset_game,
+            ),
+        )
+        .add_systems(Update, button_system        .run_if(in_state(AppState::GameOver)))
+
+        .add_systems(OnEnter(AppState::Win), win_screen)
+        .add_systems(OnExit(AppState::Win), cleanup_system::<WinUI>)
+        .add_systems(Update, button_system.run_if(in_state(AppState::Win)))
         .run();
 }
 
