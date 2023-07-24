@@ -37,14 +37,8 @@ struct Score(u32);
 #[derive(Resource, Default)]
 struct HighScore(u32);
 
-#[derive(Resource)]
+#[derive(Resource, Default)]
 struct HasWon(bool);
-
-impl Default for HasWon {
-    fn default() -> Self {
-        HasWon(false)
-    }
-}
 
 #[must_use]
 pub fn score_to_colour(score: u32) -> Color {
@@ -68,8 +62,8 @@ pub fn score_to_colour(score: u32) -> Color {
 #[must_use]
 fn grid_coord_to_position(v: Vec3) -> Vec3 {
     let mut transform = Vec3::new(0.0, 0.0, 0.0);
-    transform.x += CELL_SIZE.x * (v.x as f32) - WINDOW_SIZE.x / 2.0 + CELL_SIZE.x / 2.0;
-    transform.y += CELL_SIZE.y * (v.y as f32) - WINDOW_SIZE.y / 2.0 + CELL_SIZE.y / 2.0;
+    transform.x += CELL_SIZE.x * v.x - WINDOW_SIZE.x / 2.0 + CELL_SIZE.x / 2.0;
+    transform.y += CELL_SIZE.y * v.y - WINDOW_SIZE.y / 2.0 + CELL_SIZE.y / 2.0;
     transform.z = v.z;
     transform
 }
@@ -77,7 +71,7 @@ fn grid_coord_to_position(v: Vec3) -> Vec3 {
 #[must_use]
 fn add_tile(commands: &mut Commands, grid: &mut Grid, text_style: &TextStyle) -> bool {
     if let Some(UVec2 { x: i, y: j }) = grid.add_random_tile() {
-        let score = grid.cells[Grid::index_2d(i as usize, j as usize, 4, 4) as usize] as u32;
+        let score = grid.cells[Grid::index_2d(i as usize, j as usize, 4, 4)] as u32;
         commands.spawn((
             SpriteBundle {
                 sprite: Sprite {
@@ -112,7 +106,7 @@ fn add_tile(commands: &mut Commands, grid: &mut Grid, text_style: &TextStyle) ->
         ));
         return true;
     }
-    return false;
+    false
 }
 
 #[derive(Resource)]
@@ -189,6 +183,20 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>, mut grid: ResMu
     }
 }
 
+fn check_state(    grid: ResMut<Grid>,    mut has_won: ResMut<HasWon>,    mut next_state: ResMut<NextState<AppState>>) {
+  if !grid.has_empty_cells() && !grid.has_legal_move() {
+    next_state.set(AppState::GameOver);
+    return;
+  }
+
+  if let HasWon(false) = *has_won {
+    if grid.max_value() >= 2048 {
+      has_won.0 = true;
+      next_state.set(AppState::Win);
+    }
+  }
+}
+
 fn input(
     input: Res<Input<KeyCode>>,
     mut grid: ResMut<Grid>,
@@ -196,7 +204,6 @@ fn input(
     mut query: Query<(Entity, &mut Cell, &Transform)>,
     text_style: Res<GameStyle>,
     mut next_state: ResMut<NextState<AppState>>,
-    mut has_won: ResMut<HasWon>,
     mut score_events: EventWriter<ScoreEvent>,
 ) {
     let (moved, score) = {
@@ -219,19 +226,6 @@ fn input(
 
     score_events.send(ScoreEvent(score as u32));
 
-    if !grid.has_empty_cells() && !grid.has_legal_move() {
-        next_state.set(AppState::GameOver);
-        return;
-    }
-
-    if let HasWon(false) = *has_won {
-        if grid.max_value() >= 2048 {
-            has_won.0 = true;
-            next_state.set(AppState::Win);
-            return;
-        }
-    }
-
     for (entity, mut cell, trans) in query.iter_mut() {
         if let Some((from_cell, to_cell)) = moved.iter().find(|(f, _)| f == &cell.coord) {
             let from = Vec3::new(from_cell.x as f32, from_cell.y as f32, trans.translation.z);
@@ -242,8 +236,8 @@ fn input(
                 .entity(entity)
                 .insert(tween_translation(0.2, from, to));
 
-            cell.coord.x = to_cell.x as u32;
-            cell.coord.y = to_cell.y as u32;
+            cell.coord.x = to_cell.x;
+            cell.coord.y = to_cell.y;
         }
     }
 
@@ -310,9 +304,9 @@ fn reset_game(
     score.0 = 0;
 }
 
+#[allow(clippy::type_complexity)]
 fn button_system(
     mut next_state: ResMut<NextState<AppState>>,
-    text_style: Res<GameStyle>,
     mut interaction_query: Query<
         (&Interaction, &mut BackgroundColor),
         (Changed<Interaction>, With<Button>),
@@ -517,9 +511,8 @@ fn main() {
         }))
         .add_systems(Update, bevy::window::close_on_esc)
         .add_systems(Startup, setup)
-        .add_systems(Update, add_score)
         .add_systems(Update, (tween_scale_system, tween_translation_system))
-        .add_systems(Update, (update_tile_graphics, input).run_if(in_state(AppState::InGame)))
+        .add_systems(Update, (add_score, check_state, update_tile_graphics, input).run_if(in_state(AppState::InGame)))
         .add_systems(OnEnter(AppState::GameOver), game_over)
         .add_systems(
             OnExit(AppState::GameOver),

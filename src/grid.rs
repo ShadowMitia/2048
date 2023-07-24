@@ -13,11 +13,6 @@ impl Grid {
     }
 
     #[must_use]
-    pub fn default() -> Self {
-        Self { cells: [0; 16] }
-    }
-
-    #[must_use]
     pub fn add_random_tile(&mut self) -> Option<UVec2> {
         if !self.has_empty_cells() {
             return None;
@@ -35,7 +30,7 @@ impl Grid {
         self.cells[empty_cells[0]] = if rng.gen::<f32>() < 0.9 { 2 } else { 4 };
         let index = empty_cells[0];
 
-        return Some(Grid::index_to_coord(index, 4, 4));
+        Some(Grid::index_to_coord(index, 4, 4))
     }
 
     #[must_use]
@@ -216,7 +211,7 @@ impl Grid {
         let (left, _) = grid.move_left();
         let (right, _) = grid.move_right();
 
-        return up.len() > 0 || down.len() > 0 || left.len() > 0 || right.len() > 0;
+        !up.is_empty() || !down.is_empty() || !left.is_empty() || !right.is_empty()
     }
 
     pub fn has_empty_cells(&self) -> bool {
