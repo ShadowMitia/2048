@@ -183,18 +183,22 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>, mut grid: ResMu
     }
 }
 
-fn check_state(    grid: ResMut<Grid>,    mut has_won: ResMut<HasWon>,    mut next_state: ResMut<NextState<AppState>>) {
-  if !grid.has_empty_cells() && !grid.has_legal_move() {
-    next_state.set(AppState::GameOver);
-    return;
-  }
-
-  if let HasWon(false) = *has_won {
-    if grid.max_value() >= 2048 {
-      has_won.0 = true;
-      next_state.set(AppState::Win);
+fn check_state(
+    grid: ResMut<Grid>,
+    mut has_won: ResMut<HasWon>,
+    mut next_state: ResMut<NextState<AppState>>,
+) {
+    if !grid.has_empty_cells() && !grid.has_legal_move() {
+        next_state.set(AppState::GameOver);
+        return;
     }
-  }
+
+    if let HasWon(false) = *has_won {
+        if grid.max_value() >= 2048 {
+            has_won.0 = true;
+            next_state.set(AppState::Win);
+        }
+    }
 }
 
 fn input(
@@ -341,8 +345,8 @@ fn game_over(mut commands: Commands, font: Res<GameFont>) {
                 style: Style {
                     position_type: PositionType::Absolute,
                     // fill the entire window
-                  width: Val::Percent(100.),
-                  height: Val::Percent(100.),
+                    width: Val::Percent(100.),
+                    height: Val::Percent(100.),
                     flex_direction: FlexDirection::Column,
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::SpaceEvenly,
@@ -512,7 +516,11 @@ fn main() {
         .add_systems(Update, bevy::window::close_on_esc)
         .add_systems(Startup, setup)
         .add_systems(Update, (tween_scale_system, tween_translation_system))
-        .add_systems(Update, (add_score, check_state, update_tile_graphics, input).run_if(in_state(AppState::InGame)))
+        .add_systems(
+            Update,
+            (add_score, check_state, update_tile_graphics, input)
+                .run_if(in_state(AppState::InGame)),
+        )
         .add_systems(OnEnter(AppState::GameOver), game_over)
         .add_systems(
             OnExit(AppState::GameOver),
@@ -522,8 +530,7 @@ fn main() {
                 reset_game,
             ),
         )
-        .add_systems(Update, button_system        .run_if(in_state(AppState::GameOver)))
-
+        .add_systems(Update, button_system.run_if(in_state(AppState::GameOver)))
         .add_systems(OnEnter(AppState::Win), win_screen)
         .add_systems(OnExit(AppState::Win), cleanup_system::<WinUI>)
         .add_systems(Update, button_system.run_if(in_state(AppState::Win)))
