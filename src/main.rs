@@ -12,7 +12,7 @@ const NORMAL_BUTTON: Color = Color::rgb(0.15, 0.15, 0.15);
 const HOVERED_BUTTON: Color = Color::rgb(0.25, 0.25, 0.25);
 const PRESSED_BUTTON: Color = Color::rgb(0.35, 0.75, 0.35);
 
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(States, Debug, Default, Clone, Copy, Eq, PartialEq, Hash)]
 enum AppState {
     GameOver,
     Win,
@@ -20,15 +20,7 @@ enum AppState {
     InGame,
 }
 
-impl States for AppState {
-    type Iter = std::array::IntoIter<AppState, 3>;
-
-    fn variants() -> Self::Iter {
-        [AppState::GameOver, AppState::Win, AppState::InGame].into_iter()
-    }
-}
-
-#[derive(Default)]
+#[derive(Default, Event)]
 struct ScoreEvent(u32);
 
 #[derive(Resource, Default)]
@@ -37,10 +29,8 @@ struct Score(u32);
 #[derive(Resource, Default)]
 struct HighScore(u32);
 
-#[derive(Resource)]
-#[derive(Default)]
+#[derive(Resource, Default)]
 struct HasWon(bool);
-
 
 #[must_use]
 pub fn score_to_colour(score: u32) -> Color {
@@ -97,9 +87,9 @@ fn add_tile(commands: &mut Commands, grid: &mut Grid, text_style: &TextStyle) ->
 
         commands.spawn((
             Text2dBundle {
-                text: Text::from_section(score.to_string(), text_style.clone())
-                    .with_alignment(TextAlignment::Center),
+                text: Text::from_section(score.to_string(), text_style.clone()),
                 transform: Transform::from_xyz(c.x, c.y, 2.0),
+
                 ..Default::default()
             },
             Cell {
@@ -142,13 +132,14 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>, mut grid: ResMu
         .spawn((
             NodeBundle {
                 style: Style {
-                    size: Size::new(
-                        bevy::prelude::Val::Percent(100.0),
-                        bevy::prelude::Val::Percent(10.0),
-                    ),
+                    display: Display::Flex,
                     flex_direction: FlexDirection::Row,
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::SpaceEvenly,
+                    flex_basis: Val::Auto,
+                    align_content: AlignContent::Stretch,
+                    width: Val::Percent(100.0),
+                    height: Val::Px(CELL_SIZE.y / 2.0),
                     ..Default::default()
                 },
                 background_color: BackgroundColor(Color::rgba(1.0, 1.0, 1.0, 1.0)),
@@ -188,7 +179,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>, mut grid: ResMu
 }
 
 fn input(
-    input: Res<Input<KeyCode>>,
+    input: Res<ButtonInput<KeyCode>>,
     mut grid: ResMut<Grid>,
     mut commands: Commands,
     mut query: Query<(Entity, &mut Cell, &Transform)>,
@@ -198,13 +189,13 @@ fn input(
     mut score_events: EventWriter<ScoreEvent>,
 ) {
     let (moved, score) = {
-        if input.just_pressed(KeyCode::Left) {
+        if input.just_pressed(KeyCode::ArrowLeft) {
             grid.move_left()
-        } else if input.just_pressed(KeyCode::Right) {
+        } else if input.just_pressed(KeyCode::ArrowRight) {
             grid.move_right()
-        } else if input.just_pressed(KeyCode::Up) {
+        } else if input.just_pressed(KeyCode::ArrowUp) {
             grid.move_up()
-        } else if input.just_pressed(KeyCode::Down) {
+        } else if input.just_pressed(KeyCode::ArrowDown) {
             grid.move_down()
         } else {
             (vec![], usize::MAX)
@@ -257,7 +248,7 @@ fn add_score(
     mut score_ui: Query<&mut Text, With<ScoreUI>>,
     mut high_score_ui: Query<&mut Text, (With<HighScoreUI>, Without<ScoreUI>)>,
 ) {
-    for ev in ev_score.iter() {
+    for ev in ev_score.read() {
         *score = Score(score.0 + ev.0);
     }
 
@@ -318,7 +309,7 @@ fn button_system(
 ) {
     for (interaction, mut color) in &mut interaction_query {
         match *interaction {
-            Interaction::Clicked => {
+            Interaction::Pressed => {
                 *color = PRESSED_BUTTON.into();
                 next_state.set(AppState::InGame)
             }
@@ -344,8 +335,6 @@ fn game_over(mut commands: Commands, font: Res<GameFont>) {
                 z_index: ZIndex::Global(2),
                 style: Style {
                     position_type: PositionType::Absolute,
-                    // fill the entire window
-                    size: Size::all(Val::Percent(100.)),
                     flex_direction: FlexDirection::Column,
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::SpaceEvenly,
@@ -407,8 +396,6 @@ fn win_screen(mut commands: Commands, font: Res<GameFont>) {
             NodeBundle {
                 z_index: ZIndex::Global(2),
                 style: Style {
-                    // fill the entire window
-                    size: Size::all(Val::Percent(100.)),
                     flex_direction: FlexDirection::Column,
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::SpaceEvenly,
@@ -497,7 +484,7 @@ fn cleanup_system<T: Component>(mut commands: Commands, query: Query<Entity, Wit
 
 fn main() {
     App::new()
-        .add_state::<AppState>()
+        .init_state::<AppState>()
         .init_resource::<Grid>()
         .init_resource::<HasWon>()
         .init_resource::<Score>()
@@ -511,23 +498,26 @@ fn main() {
             }),
             ..default()
         }))
-        .add_system(bevy::window::close_on_esc)
-        .add_startup_system(setup)
-        .add_system(add_score)
-        .add_systems((tween_scale_system, tween_translation_system))
-        .add_systems((update_tile_graphics, input).in_set(OnUpdate(AppState::InGame)))
-        .add_systems((
-            game_over.in_schedule(OnEnter(AppState::GameOver)),
-            cleanup_system::<GameOverUI>.in_schedule(OnExit(AppState::GameOver)),
-            cleanup_system::<Cell>.in_schedule(OnExit(AppState::GameOver)),
-            reset_game.in_schedule(OnExit(AppState::GameOver)),
-            button_system.in_set(OnUpdate(AppState::GameOver)),
-        ))
-        .add_systems((
-            win_screen.in_schedule(OnEnter(AppState::Win)),
-            cleanup_system::<WinUI>.in_schedule(OnExit(AppState::Win)),
-            button_system.in_set(OnUpdate(AppState::Win)),
-        ))
+        .add_systems(Startup, setup)
+        .add_systems(Update, bevy::window::close_on_esc)
+        .add_systems(Update, add_score)
+        .add_systems(Update, (tween_scale_system, tween_translation_system))
+        .add_systems(
+            Update,
+            (update_tile_graphics, input).run_if(in_state(AppState::InGame)),
+        )
+        .add_systems(OnEnter(AppState::GameOver), game_over)
+        .add_systems(
+            OnExit(AppState::GameOver),
+            (
+                cleanup_system::<GameOverUI>,
+                cleanup_system::<Cell>,
+                reset_game,
+            ),
+        )
+        .add_systems(OnEnter(AppState::Win), (win_screen,))
+        .add_systems(OnExit(AppState::Win), cleanup_system::<WinUI>)
+        .add_systems(Update, button_system)
         .run();
 }
 
