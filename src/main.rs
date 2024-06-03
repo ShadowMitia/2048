@@ -38,13 +38,9 @@ struct Score(u32);
 struct HighScore(u32);
 
 #[derive(Resource)]
+#[derive(Default)]
 struct HasWon(bool);
 
-impl Default for HasWon {
-    fn default() -> Self {
-        HasWon(false)
-    }
-}
 
 #[must_use]
 pub fn score_to_colour(score: u32) -> Color {
@@ -68,8 +64,8 @@ pub fn score_to_colour(score: u32) -> Color {
 #[must_use]
 fn grid_coord_to_position(v: Vec3) -> Vec3 {
     let mut transform = Vec3::new(0.0, 0.0, 0.0);
-    transform.x += CELL_SIZE.x * (v.x as f32) - WINDOW_SIZE.x / 2.0 + CELL_SIZE.x / 2.0;
-    transform.y += CELL_SIZE.y * (v.y as f32) - WINDOW_SIZE.y / 2.0 + CELL_SIZE.y / 2.0;
+    transform.x += CELL_SIZE.x * v.x - WINDOW_SIZE.x / 2.0 + CELL_SIZE.x / 2.0;
+    transform.y += CELL_SIZE.y * v.y - WINDOW_SIZE.y / 2.0 + CELL_SIZE.y / 2.0;
     transform.z = v.z;
     transform
 }
@@ -77,7 +73,7 @@ fn grid_coord_to_position(v: Vec3) -> Vec3 {
 #[must_use]
 fn add_tile(commands: &mut Commands, grid: &mut Grid, text_style: &TextStyle) -> bool {
     if let Some(UVec2 { x: i, y: j }) = grid.add_random_tile() {
-        let score = grid.cells[Grid::index_2d(i as usize, j as usize, 4, 4) as usize] as u32;
+        let score = grid.cells[Grid::index_2d(i as usize, j as usize, 4, 4)] as u32;
         commands.spawn((
             SpriteBundle {
                 sprite: Sprite {
@@ -112,7 +108,7 @@ fn add_tile(commands: &mut Commands, grid: &mut Grid, text_style: &TextStyle) ->
         ));
         return true;
     }
-    return false;
+    false
 }
 
 #[derive(Resource)]
@@ -244,8 +240,8 @@ fn input(
                 .entity(entity)
                 .insert(tween_translation(0.2, from, to));
 
-            cell.coord.x = to_cell.x as u32;
-            cell.coord.y = to_cell.y as u32;
+            cell.coord.x = to_cell.x;
+            cell.coord.y = to_cell.y;
         }
     }
 
