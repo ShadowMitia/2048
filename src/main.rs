@@ -24,10 +24,10 @@ enum AppState {
 struct ScoreEvent(u32);
 
 #[derive(Resource, Default)]
-struct Score(u32);
-
-#[derive(Resource, Default)]
-struct HighScore(u32);
+struct Score {
+    current: u32,
+    highscore: u32,
+}
 
 #[derive(Resource, Default)]
 struct HasWon(bool);
@@ -129,24 +129,21 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>, mut grid: ResMu
     commands.spawn(Camera2dBundle::default());
 
     commands
-        .spawn((
-            NodeBundle {
-                style: Style {
-                    display: Display::Flex,
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    justify_content: JustifyContent::SpaceEvenly,
-                    flex_basis: Val::Auto,
-                    align_content: AlignContent::Stretch,
-                    width: Val::Percent(100.0),
-                    height: Val::Px(CELL_SIZE.y / 2.0),
-                    ..Default::default()
-                },
-                background_color: BackgroundColor(Color::rgba(1.0, 1.0, 1.0, 1.0)),
+        .spawn((NodeBundle {
+            style: Style {
+                display: Display::Flex,
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::SpaceEvenly,
+                flex_basis: Val::Auto,
+                align_content: AlignContent::Stretch,
+                width: Val::Percent(100.0),
+                height: Val::Px(CELL_SIZE.y / 2.0),
                 ..Default::default()
             },
-            WinUI,
-        ))
+            background_color: BackgroundColor(Color::rgba(1.0, 1.0, 1.0, 1.0)),
+            ..Default::default()
+        },))
         .with_children(|builder| {
             builder.spawn((
                 TextBundle::from_section(
@@ -244,22 +241,22 @@ fn input(
 fn add_score(
     mut ev_score: EventReader<ScoreEvent>,
     mut score: ResMut<Score>,
-    mut high_score: ResMut<HighScore>,
     mut score_ui: Query<&mut Text, With<ScoreUI>>,
     mut high_score_ui: Query<&mut Text, (With<HighScoreUI>, Without<ScoreUI>)>,
 ) {
     for ev in ev_score.read() {
-        *score = Score(score.0 + ev.0);
+        score.current += ev.0;
     }
 
-    let mut score_ui = score_ui.get_single_mut().unwrap();
-    score_ui.sections[0].value = format!("Score {}", score.0);
+    if let Ok(mut score_ui) = score_ui.get_single_mut() {
+        score_ui.sections[0].value = format!("Score {}", score.current);
 
-    if score.0 > high_score.0 {
-        high_score.0 = score.0;
+        if score.current > score.highscore {
+            score.highscore = score.current;
 
-        let mut score_ui = high_score_ui.get_single_mut().unwrap();
-        score_ui.sections[0].value = format!("High score {}", score.0);
+            let mut score_ui = high_score_ui.get_single_mut().unwrap();
+            score_ui.sections[0].value = format!("High score {}", score.highscore);
+        }
     }
 }
 
@@ -296,7 +293,7 @@ fn reset_game(
 
     *has_won = HasWon(false);
 
-    score.0 = 0;
+    score.current = 0;
 }
 
 fn button_system(
@@ -338,6 +335,10 @@ fn game_over(mut commands: Commands, font: Res<GameFont>) {
                     flex_direction: FlexDirection::Column,
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::SpaceEvenly,
+                    flex_basis: Val::Auto,
+                    align_content: AlignContent::Stretch,
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
                     ..Default::default()
                 },
                 background_color: BackgroundColor(Color::rgba(1.0, 1.0, 1.0, 0.75)),
@@ -399,6 +400,10 @@ fn win_screen(mut commands: Commands, font: Res<GameFont>) {
                     flex_direction: FlexDirection::Column,
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::SpaceEvenly,
+                    flex_basis: Val::Auto,
+                    align_content: AlignContent::Stretch,
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
                     ..Default::default()
                 },
                 background_color: BackgroundColor(Color::rgba(1.0, 1.0, 1.0, 0.75)),
@@ -488,7 +493,6 @@ fn main() {
         .init_resource::<Grid>()
         .init_resource::<HasWon>()
         .init_resource::<Score>()
-        .init_resource::<HighScore>()
         .add_event::<ScoreEvent>()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
