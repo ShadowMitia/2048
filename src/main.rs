@@ -113,6 +113,18 @@ struct ScoreUI;
 #[derive(Component)]
 struct HighScoreUI;
 
+fn setup_score(mut score: ResMut<Score>) {
+    use directories::ProjectDirs;
+
+    if let Some(proj_dirs) = ProjectDirs::from("eu", "shadowmitia", "2048") {
+        let highscore = proj_dirs.data_dir().join("highscore.txt");
+        // TODO: robustness
+        if dbg!(highscore.exists()) {
+            score.highscore = std::fs::read_to_string(highscore).unwrap().parse().unwrap();
+        }
+    }
+}
+
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>, mut grid: ResMut<Grid>) {
     let text_dark: Color = Color::hex("776e65").unwrap();
     let font = asset_server.load("fonts/Kenney Bold.ttf");
@@ -185,23 +197,24 @@ fn input(
     mut has_won: ResMut<HasWon>,
     mut score_events: EventWriter<ScoreEvent>,
 ) {
-    let (moved, score) = {
+    let action = {
         if input.just_pressed(KeyCode::ArrowLeft) {
-            grid.move_left()
+            Some(grid.move_left())
         } else if input.just_pressed(KeyCode::ArrowRight) {
-            grid.move_right()
+            Some(grid.move_right())
         } else if input.just_pressed(KeyCode::ArrowUp) {
-            grid.move_up()
+            Some(grid.move_up())
         } else if input.just_pressed(KeyCode::ArrowDown) {
-            grid.move_down()
+            Some(grid.move_down())
         } else {
-            (vec![], usize::MAX)
+            None
         }
     };
 
-    if score == usize::MAX {
+    if action.is_none() {
         return;
     }
+    let (moved, score) = action.unwrap();
 
     score_events.send(ScoreEvent(score as u32));
 
@@ -251,11 +264,21 @@ fn add_score(
     if let Ok(mut score_ui) = score_ui.get_single_mut() {
         score_ui.sections[0].value = format!("Score {}", score.current);
 
-        if score.current > score.highscore {
-            score.highscore = score.current;
+        //
+        {
+            if score.current > score.highscore {
+                score.highscore = score.current;
+            }
 
             let mut score_ui = high_score_ui.get_single_mut().unwrap();
             score_ui.sections[0].value = format!("High score {}", score.highscore);
+
+            use directories::ProjectDirs;
+
+            if let Some(proj_dirs) = ProjectDirs::from("eu", "shadowmitia", "2048") {
+                let highscore = proj_dirs.data_dir().join("highscore.txt");
+                std::fs::write(highscore, score.highscore.to_string());
+            }
         }
     }
 }
@@ -502,7 +525,7 @@ fn main() {
             }),
             ..default()
         }))
-        .add_systems(Startup, setup)
+        .add_systems(Startup, (setup_score, setup))
         .add_systems(Update, bevy::window::close_on_esc)
         .add_systems(Update, add_score)
         .add_systems(Update, (tween_scale_system, tween_translation_system))

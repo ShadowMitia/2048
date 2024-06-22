@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 bevy = { version = "0.13.2" }
+directories = "5.0.1"
 rand = "0.8.5"
