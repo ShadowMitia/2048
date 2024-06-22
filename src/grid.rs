@@ -32,8 +32,9 @@ impl Grid {
             .collect::<Vec<usize>>();
         empty_cells.shuffle(&mut rng);
 
-        self.cells[empty_cells[0]] = if rng.gen::<f32>() < 0.9 { 2 } else { 4 };
         let index = empty_cells[0];
+
+        self.cells[index] = if rng.gen::<f32>() < 0.9 { 2 } else { 4 };
 
         Some(Grid::index_to_coord(index, 4, 4))
     }
