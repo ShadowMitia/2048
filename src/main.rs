@@ -446,8 +446,10 @@ fn input(
         }
     }
 
-    if !add_tile(&mut commands, &mut grid, &text_style.0) && !grid.has_legal_move() {
-        next_state.set(AppState::GameOver);
+    if !moved.is_empty() {
+        if !add_tile(&mut commands, &mut grid, &text_style.0) && !grid.has_legal_move() {
+            next_state.set(AppState::GameOver);
+        }
     }
 }
 
