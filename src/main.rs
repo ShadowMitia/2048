@@ -187,8 +187,27 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>, mut grid: ResMu
     }
 }
 
+enum MoveDirection {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+struct TouchTracking {
+    id: Option<u64>,
+    start: Option<Vec2>,
+    end: Option<Vec2>,
+}
+
 fn input(
     input: Res<ButtonInput<KeyCode>>,
+    buttons: Res<ButtonInput<MouseButton>>,
+    window: Query<&Window>,
+    camera: Query<(&Camera, &GlobalTransform)>,
+    touches: Res<Touches>,
+    mut mouse_coords: Local<Vec2>,
+    mut current_touch: Local<Option<TouchTracking>>,
     mut grid: ResMut<Grid>,
     mut commands: Commands,
     mut query: Query<(Entity, &mut Cell, &Transform)>,
@@ -196,25 +215,206 @@ fn input(
     mut next_state: ResMut<NextState<AppState>>,
     mut has_won: ResMut<HasWon>,
     mut score_events: EventWriter<ScoreEvent>,
+    mut gizmos: Gizmos,
 ) {
-    let action = {
-        if input.just_pressed(KeyCode::ArrowLeft) {
-            Some(grid.move_left())
-        } else if input.just_pressed(KeyCode::ArrowRight) {
-            Some(grid.move_right())
-        } else if input.just_pressed(KeyCode::ArrowUp) {
-            Some(grid.move_up())
-        } else if input.just_pressed(KeyCode::ArrowDown) {
-            Some(grid.move_down())
+    let mut released = false;
+
+    if buttons.just_released(MouseButton::Left) {
+        let window = window.single();
+        let (camera, camera_transform) = camera.single();
+
+        if let Some(world_position) = window
+            .cursor_position()
+            .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor))
+            .map(|ray| ray.origin.truncate())
+        {
+            *mouse_coords = world_position;
+        }
+        if let Some(current) = &mut *current_touch {
+            current.end = Some(*mouse_coords);
+        }
+        released = true;
+    }
+
+    let mut debug_end = None;
+
+    if buttons.pressed(MouseButton::Left) {
+        let window = window.single();
+        let (camera, camera_transform) = camera.single();
+
+        if let Some(world_position) = window
+            .cursor_position()
+            .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor))
+            .map(|ray| ray.origin.truncate())
+        {
+            *mouse_coords = world_position;
+        }
+        if current_touch.is_none() {
+            *current_touch = Some(TouchTracking {
+                id: None,
+                start: Some(*mouse_coords),
+                end: None,
+            });
         } else {
-            None
+            debug_end = Some(*mouse_coords);
+        }
+    }
+
+    const PI: f32 = std::f32::consts::PI;
+
+    let up_start = 3.0 * PI / 4.0;
+    let up_end = PI / 4.0;
+
+    let down_start = -3.0 * PI / 4.0;
+    let down_end = -PI / 4.0;
+
+    let left_start = 3.0 * PI / 4.0;
+    let left_end = -3.0 * PI / 4.0;
+
+    let right_start = PI / 4.0;
+    let right_end = -PI / 4.0;
+
+    /*
+                    Some(MoveDirection::Left) => Color::GREEN,
+                      Some(MoveDirection::Right) => Color::BLUE,
+                      Some(MoveDirection::Up) => Color::PURPLE,
+    Some(MoveDirection::Down) => Color::ORANGE,
+    */
+    /*
+         gizmos.arc_2d(Vec2::ZERO, up_start, PI / 2.0, 75.0, Color::PURPLE);
+         gizmos.arc_2d(Vec2::ZERO, down_start, PI / 2.0, 75.0, Color::ORANGE);
+         gizmos.arc_2d(Vec2::ZERO, -left_start, PI / 2.0, 75.0, Color::GREEN);
+         gizmos.arc_2d(Vec2::ZERO, right_start, PI / 2.0, 75.0, Color::BLUE);
+    */
+
+    let move_direction = {
+        for touch in touches.iter_just_pressed() {
+            *current_touch = Some(TouchTracking {
+                id: Some(touch.id()),
+                start: Some(touch.position()),
+                end: None,
+            });
+            // Grab first touch and use that
+            break;
+        }
+        if let Some(current_touch) = &mut *current_touch {
+            for touch in touches.iter_just_released() {
+                if current_touch.id == Some(touch.id()) {
+                    current_touch.end = Some(touch.position());
+                    released = true;
+                } else {
+                    continue;
+                }
+            }
+        };
+
+        let dir = {
+            if let Some(current) = &*current_touch {
+                if current.end.is_some() {
+                    let diff = current.start.unwrap() - current.end.unwrap();
+                    let diff = diff.normalize_or_zero();
+
+                    if diff != Vec2::ZERO {
+                        // https://stackoverflow.com/questions/34658253/for-the-point-inside-circle-find-in-which-quarter-it-is
+                        if diff.y > 0.0 && diff.x.abs() < diff.y {
+                            // TODO: Why flipped on web?
+                            if current.id.is_none() {
+                                Some(MoveDirection::Down)
+                            } else {
+                                Some(MoveDirection::Up)
+                            }
+                        } else if diff.y < 0.0 && diff.x.abs() < -diff.y {
+                            // TODO: Why flipped on web?
+                            if current.id.is_none() {
+                                Some(MoveDirection::Up)
+                            } else {
+                                Some(MoveDirection::Down)
+                            }
+                        } else if diff.x < 0.0 && diff.y.abs() < -diff.x {
+                            Some(MoveDirection::Right)
+                        } else if diff.x > 0.0 && diff.y.abs() < diff.x {
+                            Some(MoveDirection::Left)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+
+                    /*
+                        if diff.length() > 50.0 {
+                            let angle = diff.to_angle();
+                            if angle < up_start && angle > up_end {
+                                Some(MoveDirection::Up)
+                            } else if angle < down_start && angle >= down_end {
+                                Some(MoveDirection::Down)
+                            } else if angle >= left_start && angle >= left_end {
+                                Some(MoveDirection::Left)
+                            } else if angle <= right_start && angle <= right_end {
+                                Some(MoveDirection::Right)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                    }
+                      */
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+
+        #[cfg(debug_assertions)]
+        if let Some(current) = &*current_touch {
+            if let Some(start) = current.start {
+                gizmos.circle_2d(start, 50.0, Color::RED);
+            }
+            if let Some(end) = debug_end {
+                let color = match dir {
+                    Some(MoveDirection::Left) => Color::GREEN,
+                    Some(MoveDirection::Right) => Color::BLUE,
+                    Some(MoveDirection::Up) => Color::PURPLE,
+                    Some(MoveDirection::Down) => Color::ORANGE,
+                    None => Color::RED,
+                };
+                gizmos.circle_2d(end, 50.0, color);
+            }
+        }
+
+        if released {
+            *current_touch = None;
+        }
+
+        if dir.is_some() {
+            dir
+        } else {
+            if input.just_pressed(KeyCode::ArrowLeft) {
+                Some(MoveDirection::Left)
+            } else if input.just_pressed(KeyCode::ArrowRight) {
+                Some(MoveDirection::Right)
+            } else if input.just_pressed(KeyCode::ArrowUp) {
+                Some(MoveDirection::Up)
+            } else if input.just_pressed(KeyCode::ArrowDown) {
+                Some(MoveDirection::Down)
+            } else {
+                None
+            }
         }
     };
 
-    if action.is_none() {
+    if move_direction.is_none() {
         return;
     }
-    let (moved, score) = action.unwrap();
+
+    let (moved, score) = match move_direction.unwrap() {
+        MoveDirection::Left => grid.move_left(),
+        MoveDirection::Right => grid.move_right(),
+        MoveDirection::Up => grid.move_up(),
+        MoveDirection::Down => grid.move_down(),
+    };
 
     score_events.send(ScoreEvent(score as u32));
 
